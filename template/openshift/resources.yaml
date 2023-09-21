@@ -1,0 +1,159 @@
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  annotations:
+    description: Build config for Quarkus Native Apps
+  labels:
+    app: ws-validacionexistencia
+  name: ws-validacionexistencia-s2i
+spec:
+  output:
+    to:
+      kind: ImageStreamTag
+      name: ws-validacionexistencia:latest
+  source:
+    binary: {}
+    type: Binary
+  strategy:
+    sourceStrategy:
+      from:
+        kind: ImageStreamTag
+        name: ubi-quarkus-native-binary-s2i:latest
+        namespace: openshift
+      pullSecret:
+        name: registry-redhat-io
+    type: Source
+  triggers: []
+---
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  annotations:
+    description: Build config for Quarkus JVM Compiled Apps
+  labels:
+    app: ws-validacionexistencia
+  name: ws-validacionexistencia-s2i-jvm
+spec:
+  output:
+    to:
+      kind: ImageStreamTag
+      name: ws-validacionexistencia:latest
+  source:
+    binary: {}
+    type: Binary
+  strategy:
+    sourceStrategy:
+      from:
+        kind: ImageStreamTag
+        name: openjdk-17:latest
+        namespace: openshift
+      pullSecret:
+        name: registry-redhat-io
+    type: Source
+  triggers: []
+---
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  generation: 1
+  name: ws-validacionexistencia
+spec:
+  lookupPolicy:
+    local: true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    image.openshift.io/triggers: '[{"from":{"kind":"ImageStreamTag","name":"ws-validacionexistencia:latest"},"fieldPath":"spec.template.spec.containers[?(@.name==\"quarkus\")].image"}]'
+  labels:
+    app: ws-validacionexistencia
+    app.openshift.io/runtime: quarkus
+  name: ws-validacionexistencia
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ws-validacionexistencia
+  strategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      annotations:
+        release-id: 1-1
+      labels:
+        app: ws-validacionexistencia
+        pci-compliance: "#{PCI_COMPLIANCE}#"
+    spec:
+      containers:
+        - name: quarkus
+          env:
+            - name: TZ
+              value: "#{TZ}#"
+            - name: SOAP_PRODUCER_URL
+              value: "#{SOAP_PRODUCER_URL}#"
+            - name: SERVICENAME_KEY_CERT
+              value: "#{SERVICENAME_KEY_CERT}#"
+            - name: CXF_PATH
+              value: "#{CXF_PATH}#"
+          image: image-registry.openshift-image-registry.svc:5000/#{NAMESPACE}#/ws-validacionexistencia:latest
+          imagePullPolicy: Always
+          livenessProbe:
+            httpGet:
+              path: /q/health/live
+              port: 8080
+            initialDelaySeconds: 120
+          readinessProbe:
+            httpGet:
+              path: /q/health/ready
+              port: 8080
+            initialDelaySeconds: 120
+          ports:
+            - containerPort: 8080
+              name: http
+              protocol: TCP
+          resources:
+            limits:
+              cpu: "#{CPU_LIMIT}#"
+              memory: #{MEMORY_LIMIT}#
+            requests:
+              cpu: "#{CPU_REQUEST}#"
+              memory: #{MEMORY_REQUEST}#
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+  labels:
+    app: ws-validacionexistencia
+  name: ws-validacionexistencia
+spec:
+  ports:
+    - name: http
+      port: 8080
+      protocol: TCP
+      targetPort: 8080
+  selector:
+    app: ws-validacionexistencia
+  sessionAffinity: None
+  type: ClusterIP
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  annotations:
+  labels:
+    app: ws-validacionexistencia
+    pci-compliance: "#{PCI_COMPLIANCE}#"
+  name: ws-validacionexistencia
+spec:
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+  to:
+    kind: Service
+    name: ws-validacionexistencia
+    weight: 100
+  wildcardPolicy: None
